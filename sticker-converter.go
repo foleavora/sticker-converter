@@ -8,11 +8,13 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"io"
+	"io/ioutil"
 	"log"
-	"os"
+	"time"
 
 	"github.com/foobaz/lossypng/lossypng"
 	"github.com/nfnt/resize"
+	"github.com/tucnak/telebot"
 )
 
 func compress(input io.Reader, output io.Writer) error {
@@ -76,23 +78,49 @@ func compress(input io.Reader, output io.Writer) error {
 }
 
 func main() {
-	//open the picture
-	file, err := os.Open("test.jpg")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
 
-	//create the new file
-	newfile, err := os.Create("test.png")
+	//initialize the bot with apikey
+	key, err := ioutil.ReadFile("apikey")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer newfile.Close()
 
-	//compress the file
-	err = compress(file, newfile)
-	if err != nil {
-		log.Fatal(err)
-	}
+	b, err := telebot.NewBot(telebot.Settings{
+		Token:  string(key),
+		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
+	})
+
+	b.Handle(telebot.OnPhoto, func(m *telebot.Message) {
+		//compress picture into new buffer
+		buf := new(bytes.Buffer)
+		pic, err := b.GetFile(m.Photo.MediaFile())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = compress(pic, buf)
+		if err != nil {
+			_, err := b.Send(m.Sender, err.Error())
+			if err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
+
+		//save pic into a file
+		file := telebot.FromReader(buf)
+		doc := telebot.Document{
+			File:     file,
+			MIME:     "image/png",
+			FileName: "pic.png",
+		}
+
+		//send file back to sender
+		_, err = b.Send(m.Sender, &doc)
+		if err != nil {
+			log.Fatal(err)
+		}
+	})
+
+	b.Start()
 }
