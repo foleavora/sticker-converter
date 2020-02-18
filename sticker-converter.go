@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"image"
 	_ "image/jpeg"
 	"image/png"
+	"io"
 	"log"
 	"os"
 
+	"github.com/foobaz/lossypng/lossypng"
 	"github.com/nfnt/resize"
 )
 
@@ -42,10 +46,43 @@ func main() {
 	}
 	defer newfile.Close()
 
+	//create a new buffer to check for filesize of the picture
+	buf := new(bytes.Buffer)
+	png.Encode(buf, pic)
+
+	//variables for compression level, file size and the new picture
+	comp := 1
+	filesize := buf.Len()
+	var newpic image.Image
+
+	//compress as long as needed to reach desired file size
+	for comp <= 20 && filesize > 512000 {
+		//Compress image
+		newpic = lossypng.Compress(pic, lossypng.NoConversion, comp)
+
+		//write the compressed image into the buffer
+		buf.Reset()
+		png.Encode(buf, newpic)
+
+		//get new file size and compression level
+		filesize = buf.Len()
+		comp++
+
+		//stop if the file is still too large with maximum compression
+		if comp > 20 {
+			fmt.Println("Picture too large, compression failed")
+			return
+		}
+	}
+
 	//write the new pic into said file
-	err = png.Encode(newfile, pic)
+	_, err = io.Copy(newfile, buf)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	//output final parameters
+	comp--
+	fmt.Println("Compression successful with compression level ", comp, " and file size ", filesize)
 
 }
