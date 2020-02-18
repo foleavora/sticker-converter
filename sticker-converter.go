@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -14,18 +15,12 @@ import (
 	"github.com/nfnt/resize"
 )
 
-func main() {
-	//open the picture
-	file, err := os.Open("test.jpg")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
+func compress(input io.Reader, output io.Writer) error {
 
 	//decode the image
-	pic, _, err := image.Decode(file)
+	pic, _, err := image.Decode(input)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	//get size of the picture
@@ -38,13 +33,6 @@ func main() {
 	} else {
 		pic = resize.Resize(0, 512, pic, resize.Bicubic)
 	}
-
-	//create the new file
-	newfile, err := os.Create("test.png")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer newfile.Close()
 
 	//create a new buffer to check for filesize of the picture
 	buf := new(bytes.Buffer)
@@ -70,19 +58,41 @@ func main() {
 
 		//stop if the file is still too large with maximum compression
 		if comp > 20 {
-			fmt.Println("Picture too large, compression failed")
-			return
+			return errors.New("Picture too large, compression failed")
 		}
 	}
 
 	//write the new pic into said file
-	_, err = io.Copy(newfile, buf)
+	_, err = io.Copy(output, buf)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	//output final parameters
 	comp--
 	fmt.Println("Compression successful with compression level ", comp, " and file size ", filesize)
 
+	return nil
+}
+
+func main() {
+	//open the picture
+	file, err := os.Open("test.jpg")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	//create the new file
+	newfile, err := os.Create("test.png")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer newfile.Close()
+
+	//compress the file
+	err = compress(file, newfile)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
